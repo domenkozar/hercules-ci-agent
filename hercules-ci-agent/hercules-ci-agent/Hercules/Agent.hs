@@ -86,6 +86,14 @@ performTask :: Task Task.Any -> App ()
 performTask task =
   withNamedContext "task" (Task.id task)
     $ withNamedContext "task-type" (Task.typ task)
+    $ (>> do
+        logLocM InfoS "Completed task successfully"
+
+        retry (cap 60 exponential)
+          $ noContent
+          $ runHerculesClient
+          $ tasksSetStatus tasksClient (Task.id task) (TaskStatus.Successful ())
+      )
     $ safeLiftedHandle
         (\e -> do
           logLocM ErrorS $ "Exception in task: " <> show (e :: SomeException)
@@ -109,10 +117,3 @@ performTask task =
                 buildTask = Task.uncheckedCast task
             Build.performBuild buildTask
           _ -> panicWithLog "Unknown task type"
-
-        logLocM InfoS "Completed task successfully"
-
-        noContent $ runHerculesClient $ tasksSetStatus
-          tasksClient
-          (Task.id task)
-          (TaskStatus.Successful ())
